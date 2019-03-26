@@ -62,6 +62,7 @@ class GameElement {
         this.children = [];
         if (parent) {
             parent.children.push(this);
+            this.parent = parent;
         }
     }
 
@@ -145,12 +146,14 @@ class Player extends GameElement {
         this.imageLoader = imageLoader;
         this.x = initialSquarePosition[0];
         this.y = initialSquarePosition[1];
-        this.keyboard = keyboard;
+        if (keyboard) {
+            this.keyboard = keyboard;
 
-        this.keyboard.down("up", () => this._moveUp());
-        this.keyboard.down("down", () => this._moveDown());
-        this.keyboard.down("left", () => this._moveLeft());
-        this.keyboard.down("right", () => this._moveRight());
+            this.keyboard.down("up", () => this._moveUp());
+            this.keyboard.down("down", () => this._moveDown());
+            this.keyboard.down("left", () => this._moveLeft());
+            this.keyboard.down("right", () => this._moveRight());
+        }
     }
 
     _moveUp() {
@@ -186,9 +189,88 @@ class Player extends GameElement {
     }
 
     async drawItself() {
-        const playerImage = await this.imageLoader.loadImage("img/char-boy.png");
         const [x, y] = this.getPosition();
+        const [width, height] = this.getSize();
+        const playerImage = await this.imageLoader.loadImage("img/char-boy.png");
+
+        if (this.collisionDetection()) {
+            this.context.fillStyle = "red";
+            this.context.fillRect(0, 0, width, height);
+        }
         this.context.drawImage(playerImage, x, y);
+    }
+
+    collisionDetection() {
+        // get all game elements in the parent and compare positions
+        const gameElements = this.parent.children.filter(e => e !== this);
+        const myBoundary = new GameElementBoundaries(this);
+        for (const element of gameElements) {
+            const elementBoundary = new GameElementBoundaries(element);
+            if (myBoundary.checkCollision(elementBoundary)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+class GameElementBoundaries {
+
+    constructor(gameElement) {
+        const [x, y] = gameElement.getPosition();
+        const [width, height] = gameElement.getSize();
+        this.topLeft = [x, y];
+        this.topRight = [(x + width), y];
+        this.bottomLeft = [x, (y + height)];
+        this.bottomRight = [(x + width), (y + height)];
+        this.leftThreshold = 19;
+        this.rightThreshold = 19;
+        this.topThreshold = 9;
+        this.bottomThreshold = 30;
+    }
+
+    /**
+     * A top right collision happens when the other element top right coordinate is placed between the
+     * current object top right and bottom left coordinates.
+     * @param trX
+     * @param trY
+     * @private
+     */
+    _checkTopRightCollision([blX, blY], [trX, trY]) {
+        const [localTrX, localTrY] = this.topRight
+        const xCollision = ((blX + this.rightThreshold) <= localTrX) && (trX >= localTrX);
+        const yCollision = (trY <= localTrY) && ((blY - this.topThreshold) >= localTrY);
+        return xCollision && yCollision;
+    }
+
+    _checkTopLeftCollision([brX, brY], [tlX, tlY]) {
+        const [localTlX, localTlY] = this.topLeft;
+        const xCollision = (tlX <= localTlX) && ((brX - this.leftThreshold) >= localTlX);
+        const yCollision = (tlY <= localTlY) && ((brY - this.topThreshold) >= localTlY);
+        return xCollision && yCollision;
+    }
+
+    _checkBottomRightCollision([brX, brY], [tlX, tlY]) {
+        const [localBrX, localBrY] = this.bottomRight;
+        const xCollision = ((tlX + this.rightThreshold) <= localBrX) && (brX >= localBrX);
+        const yCollision = ((tlY + this.bottomThreshold) <= localBrY) && (brY >= localBrY);
+        return xCollision && yCollision;
+    }
+
+    _checkBottomLeftCollision([blX, blY], [trX, trY]) {
+        const [localBlx, localBly] = this.bottomLeft;
+        const xCollision = ((blX + this.rightThreshold) <= localBlx) && (trX >= localBlx);
+        const yCollision = ((trY + this.bottomThreshold) <= localBly) && (blY >= localBly);
+        return xCollision && yCollision;
+    }
+
+    checkCollision(gameElementBoundary) {
+        return (
+            this._checkTopRightCollision(gameElementBoundary.bottomLeft, gameElementBoundary.topRight) ||
+            this._checkTopLeftCollision(gameElementBoundary.bottomRight, gameElementBoundary.topLeft) ||
+            this._checkBottomRightCollision(gameElementBoundary.bottomRight, gameElementBoundary.topLeft) ||
+            this._checkBottomLeftCollision(gameElementBoundary.bottomLeft, gameElementBoundary.topRight)
+        );
     }
 }
 
@@ -260,7 +342,8 @@ class FroggerGame {
         this.keyboard = new Kibo(this.canvas);
         this.root = new FieldElement(this.canvas, this.context, this.imageLoader);
         const player = new Player(this.context, this.root, this.imageLoader, [2, 5], this.keyboard);
-        const bug = new Enemy(this.context, this.root, this.imageLoader, 1, 100);
+
+        const bug = new Enemy(this.context, this.root, this.imageLoader, 1, 20);
         new Enemy(this.context, this.root, this.imageLoader, 1, 400);
         new Enemy(this.context, this.root, this.imageLoader, 2, 200);
         new Enemy(this.context, this.root, this.imageLoader, 3, 300);
